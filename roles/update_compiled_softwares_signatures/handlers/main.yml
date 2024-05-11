@@ -1,0 +1,28 @@
+---
+- name: Block to set signatures file if it does not exist on host
+  when: not signature_file_path.stat["exists"]
+  block:
+    - name: Touch a signatures file if it not exists
+      ansible.builtin.file:
+        path: '{{ update_compiled_softwares_signatures_file_path }}'
+        mode: '0644'
+        state: touch
+
+    - name: Create empty list in the signatures file
+      ansible.builtin.lineinfile:
+        path: '{{ update_compiled_softwares_signatures_file_path }}'
+        line: '[]'
+
+- name: Block to set the historical signatures file if it does not exist on host
+  when: not historical_signatures_file.stat["exists"]
+  block:
+    - name: Touch a signatures file if it not exists
+      ansible.builtin.file:
+        path: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+        mode: '0644'
+        state: touch
+
+    - name: Create empty list in the signatures file
+      ansible.builtin.lineinfile:
+        path: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+        line: '[]'

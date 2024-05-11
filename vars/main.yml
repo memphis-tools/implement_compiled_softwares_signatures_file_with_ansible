@@ -1,0 +1,3 @@
+---
+update_compiled_softwares_signatures_file_path: '/etc/compiled_softwares_list.json'
+update_compiled_softwares_signatures_historical_file_path: '/etc/compiled_softwares_historical_list.json'

@@ -1,0 +1,91 @@
+---
+- name: Main block
+  tags: ['always', 'uninstall']
+  block:
+    - name: Check that the current compiled softwares signatures file exists
+      ansible.builtin.stat:
+        path: '{{ update_compiled_softwares_signatures_file_path }}'
+      register: current_signature_file_path
+
+    - name: Prepare a list and a dictionary for the process
+      ansible.builtin.set_fact:
+        current_signatures_file_content_list: []
+        past_signatures_file_content_list: []
+        old_signatures_file_content_dict: {}
+
+    - name: Check that the past compiled softwares signatures file exists
+      ansible.builtin.stat:
+        path: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+      register: past_signature_file_path
+
+    - name: Get the last signatures file content if file exists
+      when: current_signature_file_path.stat["exists"]
+      ansible.builtin.slurp:
+        src: '{{ update_compiled_softwares_signatures_file_path }}'
+      register: current_signatures_file
+
+    - name: Get the past signatures file content if file exists
+      when: past_signature_file_path.stat["exists"]
+      ansible.builtin.slurp:
+        src: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+      register: past_signatures_file
+
+    - name: Initialize current_signatures_file_content_list with a signatures file
+      ansible.builtin.set_fact:
+        current_signatures_file_content_list: '{{ current_signatures_file_content_list + [item] }}'
+      with_items: '{{ current_signatures_file.content | b64decode | from_json }}'
+      when: current_signature_file_path.stat["exists"]
+
+    - name: Initialize past_signatures_file_content_list with a signatures file
+      ansible.builtin.set_fact:
+        past_signatures_file_content_list: '{{ past_signatures_file_content_list + [item] }}'
+      with_items: '{{ past_signatures_file.content | b64decode | from_json }}'
+      when: past_signature_file_path.stat["exists"]
+
+    - name: Gather date and time only
+      ansible.builtin.setup:
+        gather_subset:
+          - "date_time"
+          - "!min"
+      when: ansible_date_time is not defined
+
+    - name: Set the current datetime as a variable
+      ansible.builtin.set_fact:
+        current_datetime: "{{ '%Y-%m-%d %H:%M:%S' | strftime(ansible_date_time.epoch) }}"
+
+    - name: Set a dictionary with the old compiled softwares signatures list
+      ansible.builtin.set_fact:
+        old_signatures_file_content_dict: '
+          {{ old_signatures_file_content_dict | combine({current_datetime: current_signatures_file_content_list}) }}
+        '
+
+    - name: Append the past signature to the signed compiled softwares list
+      ansible.builtin.set_fact:
+        past_signatures_file_content_list: '
+          {{ past_signatures_file_content_list + [old_signatures_file_content_dict] }}
+        '
+
+    - name: Remove the original signature file
+      ansible.builtin.file:
+        dest: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+        state: absent
+
+    - name: Append datas to the compiled softwares signatures historical file
+      ansible.builtin.blockinfile:
+        path: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+        block: '"{{ past_signatures_file_content_list }}"'
+        marker: ""
+        mode: "0644"
+        create: true
+
+    - name: 'We remove any " from {{ update_compiled_softwares_signatures_historical_file_path }}'
+      ansible.builtin.replace:
+        dest: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+        regexp: '"'
+        replace: ""
+
+    - name: 'We replace any single quote by " from {{ update_compiled_softwares_signatures_historical_file_path }}'
+      ansible.builtin.replace:
+        dest: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+        regexp: "'"
+        replace: "\""

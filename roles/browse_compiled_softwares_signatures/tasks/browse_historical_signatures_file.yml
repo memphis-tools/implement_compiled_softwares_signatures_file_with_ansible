@@ -1,0 +1,33 @@
+---
+- name: Block for the browse past signature file task
+  tags: browse
+  block:
+    - name: Gather date and time only
+      ansible.builtin.setup:
+        gather_subset:
+          - "date_time"
+          - "!min"
+      when: ansible_date_time is not defined
+
+    - name: Get the signatures file content if file exists
+      ansible.builtin.slurp:
+        src: '{{ update_compiled_softwares_signatures_historical_file_path }}'
+      register: historical_signatures_file
+
+    - name: Display only event with only not_before set
+      ansible.builtin.debug:
+        msg: '{{ item.key }} {{ item.value }}'
+      when: "item.key > not_before | default('') and not_after is not defined"
+      with_dict: '{{ historical_signatures_file.content | b64decode | from_json }}'
+
+    - name: Display only event with only not_after set
+      ansible.builtin.debug:
+        msg: '{{ item.key }} {{ item.value }}'
+      when: "item.key < not_after and not_before | default('') is not defined"
+      with_dict: '{{ historical_signatures_file.content | b64decode | from_json }}'
+
+    - name: Display only event with not_before and not_after set
+      ansible.builtin.debug:
+        msg: '{{ item.key }} {{ item.value }}'
+      when: item.key > not_before | default('') and item.key < not_after | default('')
+      with_dict: '{{ historical_signatures_file.content | b64decode | from_json }}'

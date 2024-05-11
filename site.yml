@@ -1,0 +1,23 @@
+---
+- name: Ansible update signatures infrastructure
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Load the shared variables
+      ansible.legacy.include_vars: main.yml
+      tags: always
+
+    - name: Update current signatures files if tag scope not defined
+      ansible.legacy.include_role:
+        name: update_compiled_softwares_signatures
+        tasks_from: update_current_signature_file.yml
+      tags:
+        - update
+        - uninstall
+
+    - name: Browse past signatures file
+      ansible.legacy.include_role:
+        name: browse_compiled_softwares_signatures
+        tasks_from: browse_historical_signatures_file.yml
+      tags:
+        - browse

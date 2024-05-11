@@ -1,0 +1,115 @@
+---
+- name: Main block
+  tags: ['always', 'uninstall']
+  block:
+    - name: Check if mandatories parameters supplied
+      ansible.builtin.fail:
+        msg: 'Mandatories parameters missing'
+      when: "soft_name is undefined or soft_version is undefined"
+
+    - name: Check if signatures file exists
+      ansible.builtin.stat:
+        path: '{{ update_compiled_softwares_signatures_file_path }}'
+      register: signature_file_path
+
+    - name: Prepare two lists for the process
+      ansible.builtin.set_fact:
+        signatures_file_content_list: []
+        current_software_signature_list: []
+
+    - name: Get the signatures file content if file exists
+      when: signature_file_path.stat["exists"]
+      ansible.builtin.slurp:
+        src: '{{ update_compiled_softwares_signatures_file_path }}'
+      register: signatures_file
+      notify: Block to set signatures file if it does not exist on host
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Initialize signatures_file_content_list with a signatures file
+      ansible.builtin.set_fact:
+        signatures_file_content_list: '{{ signatures_file_content_list + [item] }}'
+      with_items: '{{ signatures_file.content | b64decode | from_json }}'
+      when: signature_file_path.stat["exists"]
+
+    - name: Check if signed app with same version already exists and if so \
+        set it as a dedicated list
+      ansible.builtin.set_fact:
+        current_software_signature_list: '{{ current_software_signature_list + [item] }}'
+        update_compiled_softwares_signatures_software_code_revision: '{{ item.revision | int + 1 }}'
+      when: '
+      (soft_name  == item.name | from_yaml and soft_version | string  == item.version | from_yaml)
+      or
+      (soft_name  == item.name | from_yaml and soft_version | float  == item.version | from_yaml)
+      '
+      loop: "{{ signatures_file_content_list }}"
+      register: result
+
+    - name: Stop execution when uninstall in tags and there is nothing to remove
+      when: 'signatures_file_content_list|length == 0 and "uninstall" in ansible_run_tags'
+      ansible.builtin.fail:
+        msg: 'There are no signatures in file'
+
+    - name: Search the signature to remove only if signature files has at least 1 element
+      when: signatures_file_content_list|length > 0
+      block:
+        - name: Fail if the required software and version missing in signatures file
+          ansible.builtin.fail:
+            msg: 'No such compiled software {{ soft_name }} with version {{ soft_version }} found'
+          when: '"failed" not in result["results"][0] and "uninstall" in ansible_run_tags'
+
+    - name: Set a new signed compiled softwares list with all ones but the current updated one
+      ansible.builtin.set_fact:
+        new_signatures_list: "{{ signatures_file_content_list | difference(current_software_signature_list) }}"
+
+    - name: Remove the original signature file
+      ansible.builtin.file:
+        dest: '{{ update_compiled_softwares_signatures_file_path }}'
+        state: absent
+
+    - name: Block dedicated to set the new signature files
+      when: '"uninstall" not in ansible_run_tags'
+      block:
+        - name: Set the new signature for the current updated app
+          ansible.builtin.set_fact:
+            new_signatures: '{
+             "name":"{{ soft_name }}",
+             "type":"{{ soft_type }}",
+             "version":"{{ soft_version }}",
+             "revision":"{{ update_compiled_softwares_signatures_software_code_revision }}",
+             "code":"{{ soft_code | default("") }}",
+             "description":"{{ soft_description | default("") }}"
+             }'
+
+        - name: Append the new signature to the signed compiled softwares list
+          ansible.builtin.set_fact:
+            new_signatures_list: '{{ new_signatures_list + [new_signatures] }}'
+
+    - name: Create a new compiled softwares signatures file
+      ansible.builtin.blockinfile:
+        path: '{{ update_compiled_softwares_signatures_file_path }}'
+        block: '"{{ new_signatures_list }}"'
+        marker: ""
+        mode: "0644"
+        create: true
+
+    - name: 'We remove any " from {{ update_compiled_softwares_signatures_file_path }}'
+      ansible.builtin.replace:
+        dest: '{{ update_compiled_softwares_signatures_file_path }}'
+        regexp: '"'
+        replace: ""
+
+    - name: 'We replace any single quote by " from {{ update_compiled_softwares_signatures_file_path }}'
+      ansible.builtin.replace:
+        dest: '{{ update_compiled_softwares_signatures_file_path }}'
+        regexp: "'"
+        replace: "\""
+
+    - name: Update the historical signatures file
+      ansible.builtin.include_tasks:
+        file: tasks/update_historical_signature_file.yml
+        apply:
+          tags:
+            - always
+            - uninstall

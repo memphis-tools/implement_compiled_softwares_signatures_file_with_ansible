@@ -1,0 +1,13 @@
+name: CI
+
+on: [push]
+
+jobs:
+  dummy-test:
+    name: ansible syntax-check
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: test dummy action
+        run: |
+          ansible-playbook -i localhost, site.yml --syntax-check

@@ -1,0 +1,26 @@
+name: Linting
+
+on: [push]
+
+jobs:
+  ansiblelint:
+    name: ansible-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install ansible ansible-lint
+      - name: Run ansible-lint
+        uses: ansible/ansible-lint@v24.2.3
+
+  yamllint:
+    name: Run yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4.1.5
+      - name: Run yaml linter
+        run: |
+          yamllint --strict $(git ls-files '*.yaml' '*.yml')
