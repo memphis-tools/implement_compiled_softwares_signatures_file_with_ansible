@@ -1,3 +1,5 @@
 ---
+warn_list:
+  - var-naming
 exclude_paths:
   - .github/workflows/
